@@ -1,509 +1,475 @@
-import os
-import streamlit as st
-from datetime import datetime
-from langchain_core.messages import HumanMessage
-from main import app
 import uuid
+from typing import Any
 
+import streamlit as st
+from langgraph.types import Command
+
+# --------------------------------------------------------------------------- #
+# Page setup
+# --------------------------------------------------------------------------- #
 st.set_page_config(
-    page_title="AI Travel Booking System",
-    page_icon="✈️",
-    layout="wide"
+    page_title="Wayfinder | AI Trip Planner",
+    page_icon="🧭",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-html, body, .stApp {
-    font-family: 'Inter', sans-serif;
-    background-color: #080d14;
-}
 
-/* ── Hero ── */
-.hero-wrapper {
-    position: relative;
-    border-radius: 20px;
-    overflow: hidden;
-    margin-bottom: 2rem;
-    height: 280px;
-}
-.hero-bg {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    filter: brightness(0.35);
-    position: absolute;
-    top: 0; left: 0;
-}
-.hero-content {
-    position: relative;
-    z-index: 2;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 2rem;
-}
-.hero-badge {
-    background: rgba(58,123,213,0.25);
-    border: 1px solid rgba(58,123,213,0.5);
-    color: #7ab8f5 !important;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    padding: 0.3rem 0.9rem;
-    border-radius: 20px;
-    margin-bottom: 0.9rem;
-    display: inline-block;
-}
-.hero-title {
-    font-size: 2.6rem;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0 0 0.6rem;
-    line-height: 1.2;
-}
-.hero-sub {
-    color: #94adc8;
-    font-size: 1rem;
-    max-width: 560px;
-}
+@st.cache_resource(show_spinner=False)
+def load_graph():
+ 
+    from graph import graph  
 
-/* ── Input card ── */
-.input-card {
-    background: #0e1623;
-    border: 1px solid #1e2e44;
-    border-radius: 16px;
-    padding: 1.6rem 1.8rem;
-    margin-bottom: 1.5rem;
-}
-.input-label {
-    color: #7ab8f5;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-}
+    return graph
 
-/* ── Quick destinations ── */
-.dest-row {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin: 0.8rem 0 1.2rem;
-}
-.dest-chip {
-    background: #111b2b;
-    border: 1px solid #1e3050;
-    color: #f7fdf4;
-    padding: 0.35rem 0.85rem;
-    border-radius: 20px;
-    font-size: 0.82rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.dest-chip:hover { background: #1a2e47; border-color: #3a7bd5; color: #fff; }
 
-/* ── Generate button ── */
-div[data-testid="stButton"] > button {
-    background: linear-gradient(135deg, #1a6bbf 0%, #0d4a8a 50%, #0a3d75 100%) !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 12px !important;
-    padding: 0.85rem 2.5rem !important;
-    font-size: 1.05rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.03em !important;
-    width: 100% !important;
-    box-shadow: 0 0 24px rgba(26,107,191,0.35), 0 4px 15px rgba(0,0,0,0.4) !important;
-    transition: all 0.3s ease !important;
-}
-div[data-testid="stButton"] > button:hover {
-    box-shadow: 0 0 40px rgba(26,107,191,0.6), 0 6px 20px rgba(0,0,0,0.5) !important;
-    transform: translateY(-2px) !important;
-    background: linear-gradient(135deg, #2278d4 0%, #1057a0 50%, #0d4a8a 100%) !important;
-}
-div[data-testid="stButton"] > button:active {
-    transform: translateY(0px) !important;
-}
+def initial_state(query: str) -> dict[str, Any]:
+    # 2) EDIT ME if TravelState needs more initial keys.
+    return {"user_query": query, "messages": [], "llm_calls": 0}
 
-/* ── Agent status cards ── */
-[data-testid="stStatusWidget"] {
-    background: #0e1a2e !important;
-    border: 1px solid #1e3050 !important;
-    border-radius: 12px !important;
-}
-[data-testid="stStatusWidget"] > div:first-child {
-    background: #0e1a2e !important;
-    border-radius: 12px 12px 0 0 !important;
-}
-[data-testid="stStatusWidget"] details,
-[data-testid="stStatusWidget"] details > div,
-[data-testid="stStatusWidget"] [data-testid="stVerticalBlock"] {
-    background: #0a1520 !important;
-    color: #ffffff !important;
-    padding: 0.25rem 0.5rem !important;
-}
-[data-testid="stStatusWidget"] * { color: #ffffff !important; }
-[data-testid="stStatusWidget"] a { color: #4ea8f0 !important; }
-[data-testid="stStatusWidget"] hr { border-color: #1e3050 !important; }
 
-/* ── Section headers ── */
-.sec-head {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin: 2rem 0 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #1e2e44;
-}
-.sec-head span { font-size: 1.15rem; font-weight: 600; color: #e0edf8; }
+# --------------------------------------------------------------------------- #
+# Pipeline definition (the "route" the request flies through)
+# --------------------------------------------------------------------------- #
+STOPS = [
+    ("supervisor", "Supervisor", "🛂"),
+    ("flight", "Flights", "✈️"),
+    ("hotel", "Stays", "🏨"),
+    ("weather", "Weather", "⛅"),
+    ("budget", "Budget", "💰"),
+    ("itinerary", "Itinerary", "🗺️"),
+    ("human", "Your review", "🧑‍✈️"),
+    ("final", "Final plan", "🎫"),
+]
+STOP_KEYS = [s[0] for s in STOPS]
+OPTIONAL = {"flight", "hotel", "weather", "budget"}
 
-/* ── Metric bar ── */
-.metric-row {
-    display: flex;
-    gap: 1rem;
-    margin: 1.5rem 0;
-}
-.metric-box {
-    flex: 1;
-    background: #0e1623;
-    border: 1px solid #1e2e44;
-    border-radius: 12px;
-    padding: 1rem 1.2rem;
-    text-align: center;
-}
-.metric-val { font-size: 1.8rem; font-weight: 700; color: #4ea8f0; }
-.metric-lbl { font-size: 0.78rem; color: #5a7a96; margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
-
-/* ── Final plan ── */
-.final-card {
-    background: linear-gradient(160deg, #0c1a2e 0%, #0a1520 100%);
-    border: 1px solid #1e3a5c;
-    border-left: 4px solid #3a7bd5;
-    border-radius: 14px;
-    padding: 1.8rem;
-    line-height: 1.8;
-    color: #cce0f5;
-    font-size: 0.95rem;
-}
-
-/* ── Save bar ── */
-.save-bar {
-    background: #0e1623;
-    border: 1px solid #1e2e44;
-    border-radius: 10px;
-    padding: 0.85rem 1.2rem;
-    color: #5a8ab0;
-    font-size: 0.88rem;
-    margin-top: 0.5rem;
-}
-
-/* ── Sidebar ── */
-section[data-testid="stSidebar"] {
-    background: #090e18 !important;
-    border-right: 1px solid #141f30 !important;
-}
-.sidebar-chip {
-    background: #0e1a2b;
-    border: 1px solid #1a2e44;
-    border-radius: 8px;
-    padding: 0.45rem 0.75rem;
-    margin-bottom: 0.4rem;
-    font-size: 0.83rem;
-    color: #7aa8cc;
-}
-.sidebar-title { color: #e0edf8; font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem; }
-
-/* Hide branding */
-#MainMenu, footer, header { visibility: hidden; }
-
-/* Textarea */
-.stTextArea textarea {
-    background: #0a1520 !important;
-    border: 1px solid #1e2e44 !important;
-    border-radius: 10px !important;
-    color: #e8f4ff !important;
-    font-size: 0.95rem !important;
-    resize: none !important;
-}
-.stTextArea textarea:focus {
-    border-color: #3a7bd5 !important;
-    box-shadow: 0 0 0 2px rgba(58,123,213,0.2) !important;
-}
-.stTextArea textarea::placeholder { color: #4a6a85 !important; }
-
-/* Text input (sidebar User ID field) */
-input[type="text"], .stTextInput input {
-    background: #0e1a2b !important;
-    border: 1px solid #1a2e44 !important;
-    border-radius: 8px !important;
-    color: #e0edf8 !important;
-}
-input[type="text"]:focus, .stTextInput input:focus {
-    border-color: #3a7bd5 !important;
-    box-shadow: 0 0 0 2px rgba(58,123,213,0.2) !important;
-}
-input[type="text"]::placeholder { color: #3a5570 !important; }
-
-/* All Streamlit labels — dark bg → light text */
-.stTextInput label, .stTextArea label,
-.stSelectbox label, .stNumberInput label {
-    color: #7ab8f5 !important;
-    font-size: 0.82rem !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.08em !important;
-}
-
-/* General markdown / paragraph text */
-.stMarkdown p, .stMarkdown li, .stMarkdown td, .stMarkdown th {
-    color: #cce0f5 !important;
-}
-.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 { color: #e8f4ff !important; }
-.stMarkdown code {
-    background: #0e1a2b !important;
-    color: #7ab8f5 !important;
-    padding: 0.15em 0.4em;
-    border-radius: 4px;
-}
-
-/* Metric labels — was #5a7a96 (too dim on dark bg) */
-.metric-lbl { color: #7aa8cc !important; }
-
-/* Save bar — was #5a8ab0 (slightly dim) */
-.save-bar { color: #8ab8d8 !important; }
-.save-bar code { color: #7ab8f5 !important; background: #0a1520 !important; }
-
-/* Streamlit warning / info / success on dark bg */
-.stAlert { background: #0e1a2b !important; border-radius: 10px !important; }
-.stAlert p, .stAlert div { color: #e0edf8 !important; }
-
-/* Sidebar text & dividers */
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] .stMarkdown { color: #a0c4e0 !important; }
-section[data-testid="stSidebar"] hr { border-color: #1a2e44 !important; }
-
-/* Download button — light bg → dark text  */
-div[data-testid="stDownloadButton"] > button {
-    background: #1a3a5c !important;
-    color: #e8f4ff !important;
-    border: 1px solid #2a5080 !important;
-    border-radius: 10px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("<div class='sidebar-title'>🌍 AI Travel Planner</div>", unsafe_allow_html=True)
-    st.markdown("---")
-
-    if "thread_id" not in st.session_state:
-        st.session_state.thread_id = str(uuid.uuid4())
-
-    thread_id = st.session_state.thread_id
-    st.markdown(
-    f"<div class='sidebar-chip'>🧵 Session: {thread_id[:8]}...</div>",
-    unsafe_allow_html=True
-)
-
-    st.markdown("<div class='sidebar-title'>Powered by</div>", unsafe_allow_html=True)
-    for tech in ["🔗 LangGraph", "🧠 Groq · openai/gpt-oss-120b", "🐘 PostgreSQL", "🔍 Tavily Search", "✈️ AviationStack"]:
-        st.markdown(f"<div class='sidebar-chip'>{tech}</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='sidebar-title'>Agent Pipeline</div>", unsafe_allow_html=True)
-    for step in ["① Flight Agent", "② Hotel Agent", "③ Itinerary Agent", "④ Final Agent"]:
-        st.markdown(f"<div class='sidebar-chip'>{step}</div>", unsafe_allow_html=True)
-
-# ── Hero ──────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero-wrapper">
-    <img class="hero-bg"
-         src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1400&q=80"
-         alt="airplane above clouds"/>
-    <div class="hero-content">
-        <div class="hero-badge">✦ Multi-Agent AI System</div>
-        <div class="hero-title">✈️ AI Travel Booking System</div>
-        <div class="hero-sub">Four specialized agents work together — searching flights, hotels, building an itinerary, and delivering your perfect trip plan.</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Destination image strip ───────────────────────────────────────────────────
-DESTINATIONS = [
-    ("🇯🇵 Tokyo",     "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=300&q=70"),
-    ("🇫🇷 Paris",     "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=300&q=70"),
-    ("🇹🇭 Bangkok",   "https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=300&q=70"),
-    ("🇮🇹 Rome",      "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=300&q=70"),
-    ("🇦🇪 Dubai",     "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=300&q=70"),
+EXAMPLES = [
+    "5 day trip to Tokyo from Delhi in April, mid-range budget, love food and temples",
+    "Romantic long weekend in Lisbon for 2, under $1500, slow travel style",
+    "10 days in Vietnam, backpacker budget, beaches and street food",
+    "Family trip to Dubai for 6 days with two kids, comfortable budget",
 ]
 
-cols = st.columns(5)
-for col, (name, img_url) in zip(cols, DESTINATIONS):
-    with col:
-        st.markdown(f"""
-        <div style="border-radius:10px;overflow:hidden;position:relative;height:90px;cursor:pointer;">
-            <img src="{img_url}" style="width:100%;height:100%;object-fit:cover;filter:brightness(0.55);" />
-            <div style="position:absolute;bottom:8px;left:0;right:0;text-align:center;
-                        color:#fff;font-size:0.8rem;font-weight:600;">{name}</div>
-        </div>
-        """, unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+def classify(node_name: str) -> str | None:
+    n = node_name.lower()
+    for key in STOP_KEYS:
+        if key in n:
+            return key
+    if "approval" in n:
+        return "human"
+    return None
 
-# ── Input ─────────────────────────────────────────────────────────────────────
-st.markdown("<div class='input-label'>🗺️ Describe your trip</div>", unsafe_allow_html=True)
 
-QUICK = ["7-day Japan under ₹2L", "Paris trip for 5 days", "Dubai weekend trip", "Bali backpacking 10 days"]
-qcols = st.columns(len(QUICK))
-quick_fill = ""
-for qc, label in zip(qcols, QUICK):
-    with qc:
-        if st.button(label, key=f"q_{label}"):
-            quick_fill = label
+# --------------------------------------------------------------------------- #
+# Styling
+# --------------------------------------------------------------------------- #
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:wght@400;500;600&display=swap');
 
-user_query = st.text_area(
-    "",
-    value=quick_fill,
-    placeholder="e.g. Plan a complete 7-day Japan trip including flights, hotels and sightseeing under ₹2 lakhs",
-    height=100,
-    label_visibility="collapsed",
-)
-
-generate = st.button("🚀  Generate My Travel Plan", use_container_width=True)
-
-# ── Agent pipeline ────────────────────────────────────────────────────────────
-AGENT_META = {
-    "flight_agent":    ("✈️", "Flight Agent"),
-    "hotel_agent":     ("🏨", "Hotel Agent"),
-    "itinerary_agent": ("🗓️", "Itinerary Agent"),
-    "final_agent":     ("🧠", "Final Agent"),
+:root {
+  --ink: #0e1630;
+  --ink-2: #16204a;
+  --dusk: #3a2f7d;
+  --apricot: #ffb36b;
+  --coral: #ff7a6b;
+  --lagoon: #35d0c0;
+  --sand: #f4ede3;
+  --mist: rgba(244,237,227,.68);
+  --glass: rgba(255,255,255,.055);
+  --glass-line: rgba(255,255,255,.12);
 }
 
-if generate:
-    if not user_query.strip():
-        st.warning("Please describe your trip first.")
-    else:
-        config = {"configurable": {"thread_id": thread_id}}
-        collected = {"flight_results": "", "hotel_results": "",
-                     "itinerary": "", "final_response": "", "llm_calls": 0}
+html, body, [class*="css"], .stMarkdown, .stTextArea textarea, .stButton button {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
 
-        st.markdown("---")
-        st.markdown("<div class='sec-head'><span>🤖 Agent Pipeline — Live</span></div>",
-                    unsafe_allow_html=True)
+.stApp {
+  background:
+    radial-gradient(1100px 520px at 88% -8%, rgba(255,122,107,.28), transparent 60%),
+    radial-gradient(900px 520px at 6% 4%, rgba(58,47,125,.75), transparent 62%),
+    linear-gradient(180deg, var(--ink) 0%, #0a1024 100%);
+  color: var(--sand);
+}
 
-        for chunk in app.stream(
-            {
-                "messages": [HumanMessage(content=user_query)],
-                "user_query": user_query,
-                "flight_results": "",
-                "hotel_results": "",
-                "itinerary": "",
-                "weather_results":"",
-                "llm_calls": 0,
-            },
-            config=config,
-            stream_mode="updates",
-        ):
-            for node_name, state_update in chunk.items():
-                icon, label = AGENT_META.get(node_name, ("🔧", node_name))
+header[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 2.2rem; max-width: 1180px; }
 
-                with st.status(f"{icon}  {label}", state="complete", expanded=True):
-                    if node_name == "flight_agent":
-                        text = state_update.get("flight_results", "")
-                        collected["flight_results"] = text
-                        st.markdown(text or "_No flight data returned._")
+h1, h2, h3, h4 { font-family: 'Bricolage Grotesque', sans-serif !important; color: var(--sand); letter-spacing: -0.02em; }
+p, li, label, span { color: inherit; }
 
-                    elif node_name == "hotel_agent":
-                        text = state_update.get("hotel_results", "")
-                        collected["hotel_results"] = text
-                        st.markdown(text or "_No hotel data returned._")
+/* Hero */
+.hero { padding: 1.2rem 0 .4rem 0; }
+.hero-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.6rem, 6vw, 4.6rem);
+  line-height: .98;
+  letter-spacing: -0.035em;
+  margin: 0;
+  background: linear-gradient(100deg, #fff 8%, var(--apricot) 52%, var(--coral) 92%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-sub { font-size: 1.12rem; color: var(--mist); max-width: 40rem; margin-top: .9rem; }
 
-                    elif node_name == "weather_agent":
-                        text = state_update.get("weather_results", "")
-                        collected["weather_results"] = text
+/* Route pipeline */
+.route { display: flex; align-items: flex-start; margin: 1.6rem 0 1.2rem 0; padding: 1.1rem 1rem 1rem 1rem;
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: 22px; backdrop-filter: blur(6px); overflow-x: auto; }
+.stop { flex: 1; min-width: 92px; text-align: center; position: relative; }
+.stop::before { content: ""; position: absolute; top: 21px; left: -50%; width: 100%; height: 2px;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.22) 0 6px, transparent 6px 12px); z-index: 0; }
+.stop:first-child::before { display: none; }
+.stop.done::before { background: linear-gradient(90deg, var(--lagoon), var(--lagoon)); }
+.stop.running::before { background: linear-gradient(90deg, var(--lagoon), var(--apricot)); }
+.dot { position: relative; z-index: 1; width: 44px; height: 44px; margin: 0 auto; border-radius: 50%;
+  display: grid; place-items: center; font-size: 1.15rem; background: var(--ink-2); border: 2px solid rgba(255,255,255,.18); }
+.stop.done .dot { background: rgba(53,208,192,.18); border-color: var(--lagoon); }
+.stop.running .dot { border-color: var(--apricot); background: rgba(255,179,107,.18); animation: pulse 1.4s ease-in-out infinite; }
+.stop.skipped .dot { opacity: .35; filter: grayscale(1); }
+.stop.skipped .name { opacity: .4; text-decoration: line-through; }
+.name { margin-top: .5rem; font-size: .8rem; font-weight: 600; color: var(--mist); }
+.stop.done .name, .stop.running .name { color: var(--sand); }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,179,107,.5);} 50% { box-shadow: 0 0 0 10px rgba(255,179,107,0);} }
+@media (prefers-reduced-motion: reduce) { .stop.running .dot { animation: none; } }
 
-                        st.markdown(text or "_No weather data returned._")
+/* Trip chips */
+.chips { display: flex; flex-wrap: wrap; gap: .55rem; margin: .4rem 0 1rem 0; }
+.chip { padding: .42rem .9rem; border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass); font-size: .9rem; }
+.chip b { color: var(--apricot); font-weight: 600; margin-right: .35rem; }
 
-                    elif node_name == "itinerary_agent":
-                        text = state_update.get("itinerary", "")
-                        collected["itinerary"] = text
-                        st.markdown(text or "_No itinerary generated._")
+/* Boarding-pass card */
+.pass { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; padding: 1.3rem 1.6rem;
+  border-radius: 24px; background: linear-gradient(120deg, rgba(58,47,125,.85), rgba(255,122,107,.55));
+  border: 1px solid var(--glass-line); margin: .4rem 0 1.2rem 0; }
+.pass .city { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(1.6rem, 3.6vw, 2.5rem); letter-spacing: -0.02em; }
+.pass .tag { font-size: .85rem; color: var(--mist); }
+.pass .mid { font-size: 1.8rem; text-align: center; }
+.pass .right { text-align: right; }
 
-                    elif node_name == "final_agent":
-                        msgs = state_update.get("messages", [])
-                        text = msgs[-1].content if msgs else ""
-                        collected["final_response"] = text
-                        st.markdown(text or "_No final response._")
+/* Cards / tabs / inputs */
+.card { padding: 1.2rem 1.4rem; border-radius: 20px; background: var(--glass); border: 1px solid var(--glass-line); }
+.stTabs [data-baseweb="tab-list"] { gap: .35rem; border-bottom: 1px solid var(--glass-line); }
+.stTabs [data-baseweb="tab"] { border-radius: 12px 12px 0 0; padding: .55rem 1rem; color: var(--mist); }
+.stTabs [aria-selected="true"] { color: var(--apricot) !important; }
+.stTabs [data-baseweb="tab-highlight"] { background-color: var(--apricot) !important; }
 
-                    collected["llm_calls"] = state_update.get("llm_calls", collected["llm_calls"])
+.stTextArea textarea {
+  background: rgba(255,255,255,.06) !important; color: var(--sand) !important;
+  border: 1px solid var(--glass-line) !important; border-radius: 16px !important; font-size: 1.02rem;
+}
+.stTextArea textarea:focus { border-color: var(--apricot) !important; box-shadow: 0 0 0 3px rgba(255,179,107,.25) !important; }
 
-        # Metrics
-        st.markdown(f"""
-        <div class="metric-row">
-            <div class="metric-box"><div class="metric-val">4</div><div class="metric-lbl">Agents Run</div></div>
-            <div class="metric-box"><div class="metric-val">{collected['llm_calls']}</div><div class="metric-lbl">LLM Calls</div></div>
-            <div class="metric-box"><div class="metric-val">✅</div><div class="metric-lbl">Status</div></div>
-        </div>
-        """, unsafe_allow_html=True)
+.stButton > button, .stDownloadButton > button {
+  border-radius: 14px; border: 1px solid var(--glass-line); background: var(--glass); color: var(--sand);
+  padding: .6rem 1.1rem; font-weight: 600; transition: transform .12s ease, border-color .12s ease;
+}
+.stButton > button:hover, .stDownloadButton > button:hover { border-color: var(--apricot); transform: translateY(-1px); color: #fff; }
+.stButton > button:focus-visible { outline: 3px solid var(--apricot); }
+.stButton > button[kind="primary"] {
+  background: linear-gradient(100deg, var(--apricot), var(--coral)); color: #2a1208; border: none; font-weight: 700;
+}
+.stButton > button[kind="primary"]:hover { color: #2a1208; filter: brightness(1.06); }
 
-        # Final plan card
-        if collected["final_response"]:
-            st.markdown("<div class='sec-head'><span>🧠 Final Travel Plan</span></div>",
-                        unsafe_allow_html=True)
-            st.markdown(f"<div class='final-card'>{collected['final_response']}</div>",
-                        unsafe_allow_html=True)
-
-        # Save
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"travel_plan_{timestamp}.md"
-        save_dir = os.path.join(os.path.dirname(__file__), "travel_plans")
-        os.makedirs(save_dir, exist_ok=True)
-
-        file_content = f"""# Travel Plan
-**Query:** {user_query}
-**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-**User ID:** {thread_id}
-
----
-
-## ✈️ Flight Information
-{collected['flight_results'] or 'N/A'}
-
----
-
-## 🏨 Hotel Information
-{collected['hotel_results'] or 'N/A'}
-
----
-
-## 🗓️ Itinerary
-{collected['itinerary'] or 'N/A'}
-
----
-
-## 🧠 Final Travel Plan
-{collected['final_response'] or 'N/A'}
-
----
-*LLM Calls: {collected['llm_calls']}*
+[data-testid="stSidebar"] { background: rgba(10,16,36,.85); border-right: 1px solid var(--glass-line); }
+[data-testid="stMetric"] { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: .7rem .9rem; }
+[data-testid="stMetricValue"] { color: var(--apricot); font-family: 'Bricolage Grotesque', sans-serif; }
+[data-testid="stExpander"] { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; }
+.stAlert { border-radius: 16px; }
+hr { border-color: var(--glass-line); }
+</style>
 """
-        with open(os.path.join(save_dir, filename), "w", encoding="utf-8") as f:
-            f.write(file_content)
+st.markdown(CSS, unsafe_allow_html=True)
 
-        dl_col, info_col = st.columns([1, 3])
-        with dl_col:
-            st.download_button("⬇️ Download Plan", data=file_content,
-                               file_name=filename, mime="text/markdown",
-                               use_container_width=True)
-        with info_col:
-            st.markdown(f"<div class='save-bar'>📁 Auto-saved → <code>travel_plans/{filename}</code></div>",
-                        unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# Session state
+# --------------------------------------------------------------------------- #
+def reset_session():
+    st.session_state.thread_id = str(uuid.uuid4())
+    st.session_state.stage = "input"  # input | approval | done
+    st.session_state.data = {}
+    st.session_state.status = {k: "pending" for k in STOP_KEYS}
+    st.session_state.query = ""
+    st.session_state.llm_calls = 0
+    st.session_state.error = None
+
+
+if "stage" not in st.session_state:
+    reset_session()
+
+if "prefill" not in st.session_state:
+    st.session_state.prefill = ""
+
+
+# --------------------------------------------------------------------------- #
+# Rendering helpers
+# --------------------------------------------------------------------------- #
+def route_html(status: dict[str, str]) -> str:
+    parts = []
+    for key, label, icon in STOPS:
+        parts.append(
+            f'<div class="stop {status[key]}"><div class="dot">{icon}</div><div class="name">{label}</div></div>'
+        )
+    return f'<div class="route">{"".join(parts)}</div>'
+
+
+def chips_html(constraints: dict[str, Any]) -> str:
+    labels = {
+        "duration": "Duration",
+        "budget": "Budget",
+        "travel_style": "Style",
+    }
+    chips = []
+    for k, label in labels.items():
+        v = constraints.get(k)
+        if v:
+            chips.append(f'<span class="chip"><b>{label}</b>{v}</span>')
+    prefs = constraints.get("special_preferences") or []
+    for p in prefs:
+        chips.append(f'<span class="chip">{p}</span>')
+    return f'<div class="chips">{"".join(chips)}</div>' if chips else ""
+
+
+def boarding_pass(constraints: dict[str, Any]) -> str:
+    origin = constraints.get("origin") or "Home"
+    dest = constraints.get("destination") or "Somewhere new"
+    return f"""
+    <div class="pass">
+      <div><div class="tag">From</div><div class="city">{origin}</div></div>
+      <div class="mid">✈️</div>
+      <div class="right"><div class="tag">To</div><div class="city">{dest}</div></div>
+    </div>
+    """
+
+
+def merge_update(update: dict[str, Any] | None):
+    if not update:
+        return
+    for k, v in update.items():
+        if k == "messages":
+            continue
+        if k == "llm_calls":
+            st.session_state.llm_calls = max(st.session_state.llm_calls, v)
+        st.session_state.data[k] = v
+
+
+def advance_status(node: str, update: dict[str, Any] | None):
+    status = st.session_state.status
+    key = classify(node)
+    if key:
+        status[key] = "done"
+
+    if key == "supervisor" and update:
+        selected = [classify(a) for a in (update.get("selected_agents") or [])]
+        blocked = not selected
+        for opt in OPTIONAL:
+            if opt not in selected:
+                status[opt] = "skipped"
+        if blocked:
+            for k in STOP_KEYS:
+                if k != "supervisor":
+                    status[k] = "skipped"
+            return
+
+    # mark the next pending stop as running
+    for k in STOP_KEYS:
+        if status[k] == "pending":
+            status[k] = "running"
+            break
+
+
+# --------------------------------------------------------------------------- #
+# Run / resume the graph
+# --------------------------------------------------------------------------- #
+def stream_graph(payload, route_slot):
+    graph = load_graph()
+    config = {"configurable": {"thread_id": st.session_state.thread_id}}
+
+    if st.session_state.status["supervisor"] == "pending":
+        st.session_state.status["supervisor"] = "running"
+    route_slot.markdown(route_html(st.session_state.status), unsafe_allow_html=True)
+
+    for chunk in graph.stream(payload, config, stream_mode="updates"):
+        for node, update in chunk.items():
+            if node == "__interrupt__":
+                continue
+            merge_update(update if isinstance(update, dict) else None)
+            advance_status(node, update if isinstance(update, dict) else None)
+            route_slot.markdown(route_html(st.session_state.status), unsafe_allow_html=True)
+
+    snapshot = graph.get_state(config)
+    if snapshot.next:  # paused on interrupt -> waiting for the human
+        st.session_state.status["human"] = "running"
+        st.session_state.stage = "approval"
+    else:
+        st.session_state.stage = "done"
+        for k in STOP_KEYS:
+            if st.session_state.status[k] in ("running", "pending"):
+                st.session_state.status[k] = "done" if st.session_state.data.get("final_response") else "skipped"
+
+
+# --------------------------------------------------------------------------- #
+# Sidebar
+# --------------------------------------------------------------------------- #
+with st.sidebar:
+    st.markdown("### 🧭 WayFinder AI")
+    st.caption("A team of AI agents plans your trip. You approve before it's final.")
+    st.divider()
+    st.markdown("**Try one of these**")
+    for i, ex in enumerate(EXAMPLES):
+        if st.button(ex, key=f"ex{i}", use_container_width=True, disabled=st.session_state.stage != "input"):
+            st.session_state.prefill = ex
+            st.rerun()
+    st.divider()
+    c1, c2 = st.columns(2)
+    c1.metric("LLM calls", st.session_state.llm_calls)
+    agents_used = sum(1 for k in OPTIONAL | {"itinerary"} if st.session_state.status.get(k) == "done")
+    c2.metric("Agents run", agents_used)
+    if st.button("Start a new trip", use_container_width=True):
+        reset_session()
+        st.session_state.prefill = ""
+        st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+# Hero
+# --------------------------------------------------------------------------- #
+st.markdown(
+    """
+    <div class="hero">
+      <h1 class="hero-title">Where to next?</h1>
+      <p class="hero-sub">Describe your trip in a sentence. Flight, stay, weather and budget agents work on it together, then hand you a plan to approve.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+route_slot = st.empty()
+route_slot.markdown(route_html(st.session_state.status), unsafe_allow_html=True)
+
+# --------------------------------------------------------------------------- #
+# Stage: input
+# --------------------------------------------------------------------------- #
+if st.session_state.stage == "input":
+    query = st.text_area(
+        "Your trip",
+        value=st.session_state.prefill,
+        placeholder="e.g. 5 days in Tokyo from Delhi in April, mid-range budget, love food and temples",
+        height=110,
+        label_visibility="collapsed",
+    )
+    go = st.button("Plan my trip", type="primary")
+
+    if go:
+        if not query.strip():
+            st.warning("Add a destination or a few details about your trip to get started.")
+        else:
+            st.session_state.query = query.strip()
+            st.session_state.error = None
+            try:
+                with st.spinner("Agents are on it…"):
+                    stream_graph(initial_state(st.session_state.query), route_slot)
+            except Exception as e:  # noqa: BLE001
+                st.session_state.error = str(e)
+                st.session_state.stage = "input"
+                st.session_state.status = {k: "pending" for k in STOP_KEYS}
+            st.rerun()
+
+    if st.session_state.error:
+        st.error(f"Something went wrong while planning: {st.session_state.error}")
+
+# --------------------------------------------------------------------------- #
+# Results (shown during approval and after)
+# --------------------------------------------------------------------------- #
+data = st.session_state.data
+if st.session_state.stage in ("approval", "done") and data:
+    constraints = data.get("trip_constraints") or {}
+    blocked = st.session_state.stage == "done" and not data.get("selected_agents") and data.get("final_response")
+
+    if blocked:
+        st.warning(data["final_response"])
+        st.caption("Try a request about a trip, for example a destination, dates or budget.")
+    else:
+        if constraints:
+            st.markdown(boarding_pass(constraints), unsafe_allow_html=True)
+            st.markdown(chips_html(constraints), unsafe_allow_html=True)
+
+        # Approval panel
+        if st.session_state.stage == "approval":
+            st.markdown("### Review your draft plan")
+            st.info("Read through the draft below. Approve it to get the final plan, or tell the agents what to change.")
+            with st.container(border=True):
+                st.markdown(data.get("itinerary", "_No itinerary generated._"))
+
+            feedback = st.text_area(
+                "Feedback (optional)",
+                placeholder="e.g. Add a day trip to Nikko, cut the budget by 15%, fewer museums",
+                height=90,
+                key="feedback_box",
+            )
+            b1, b2, _ = st.columns([1, 1.2, 3])
+            approve = b1.button("Approve plan", type="primary", use_container_width=True)
+            revise = b2.button("Request changes", use_container_width=True)
+
+            if approve or revise:
+                if revise and not feedback.strip():
+                    st.warning("Tell the agents what to change, then request changes.")
+                else:
+                    payload = Command(resume={"approved": bool(approve), "feedback": feedback.strip()})
+                    st.session_state.status["human"] = "done"
+                    try:
+                        with st.spinner("Polishing your final plan…"):
+                            stream_graph(payload, route_slot)
+                    except Exception as e:  # noqa: BLE001
+                        st.session_state.error = str(e)
+                    st.rerun()
+
+        # Final plan
+        if st.session_state.stage == "done" and data.get("final_response"):
+            st.success("Your trip plan is ready.")
+            st.markdown("### Final plan")
+            with st.container(border=True):
+                st.markdown(data["final_response"])
+            st.download_button(
+                "Download plan (.md)",
+                data=data["final_response"],
+                file_name="trip_plan.md",
+                mime="text/markdown",
+            )
+            st.markdown("---")
+
+        # Agent outputs
+        st.markdown("### What each agent found")
+        tabs = st.tabs(["Flights", "Stays", "Weather", "Budget", "Supervisor notes"])
+
+        with tabs[0]:
+            if data.get("flight_results"):
+                st.markdown(data["flight_results"])
+            else:
+                st.caption("The flight agent wasn't needed for this request.")
+        with tabs[1]:
+            if data.get("hotel_results"):
+                with st.expander("Search results", expanded=True):
+                    st.markdown(data["hotel_results"])
+            else:
+                st.caption("The hotel agent wasn't needed for this request.")
+        with tabs[2]:
+            if data.get("weather_results"):
+                st.markdown(data["weather_results"])
+            else:
+                st.caption("The weather agent wasn't needed for this request.")
+        with tabs[3]:
+            if data.get("budget_results"):
+                st.markdown(data["budget_results"])
+            else:
+                st.caption("The budget agent wasn't needed for this request.")
+        with tabs[4]:
+            st.markdown(data.get("supervisor_reasoning") or "_No notes._")
+            st.markdown("**Agents selected**")
+            st.write(", ".join(data.get("selected_agents") or []) or "None")
+
+    if st.session_state.error and st.session_state.stage != "input":
+        st.error(f"Something went wrong: {st.session_state.error}")

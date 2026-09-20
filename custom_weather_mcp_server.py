@@ -1,16 +1,18 @@
 from mcp.server.fastmcp import FastMCP
 import requests
 import os
+
 from dotenv import load_dotenv
 load_dotenv()
 
-mcp=FastMCP("Weather Server")
+mcp = FastMCP("Weather Server")
 
-WEATHER_API_KEY=os.getenv("WEATHER_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 @mcp.tool()
-def current_weather(city:str):
-    response=requests.get(
+def get_current_weather(city: str):
+
+    response = requests.get(
         "https://api.openweathermap.org/data/2.5/weather",
         params={
             "q": city,
@@ -19,9 +21,9 @@ def current_weather(city:str):
         }
     )
 
-    data=response.json()
+    data = response.json()
 
-    if response.status_code!=200:
+    if response.status_code != 200:
         return data
 
     return {
