@@ -333,7 +333,7 @@ and later resume using the persisted state.
 ⚙️ Installation
 1. Clone the Repository
 
-git clone <your-repository-url>
+git clone https://github.com/AyushTayal777/Wayfinder-AI
 cd "Wayfinder AI"
 
 2. Create a Virtual Environment
