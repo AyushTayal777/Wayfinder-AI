@@ -3,6 +3,7 @@ import streamlit as st
 from datetime import datetime
 from langchain_core.messages import HumanMessage
 from main import app
+import uuid
 
 st.set_page_config(
     page_title="AI Travel Booking System",
@@ -305,11 +306,17 @@ with st.sidebar:
     st.markdown("<div class='sidebar-title'>🌍 AI Travel Planner</div>", unsafe_allow_html=True)
     st.markdown("---")
 
-    thread_id = st.text_input("👤 User ID", value="aarohi_user",
-                              help="Your session ID — keeps travel history across queries")
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = str(uuid.uuid4())
+
+    thread_id = st.session_state.thread_id
+    st.markdown(
+    f"<div class='sidebar-chip'>🧵 Session: {thread_id[:8]}...</div>",
+    unsafe_allow_html=True
+)
 
     st.markdown("<div class='sidebar-title'>Powered by</div>", unsafe_allow_html=True)
-    for tech in ["🔗 LangGraph", "🧠 Groq · LLaMA 3.3 70B", "🐘 PostgreSQL", "🔍 Tavily Search", "✈️ AviationStack"]:
+    for tech in ["🔗 LangGraph", "🧠 Groq · openai/gpt-oss-120b", "🐘 PostgreSQL", "🔍 Tavily Search", "✈️ AviationStack"]:
         st.markdown(f"<div class='sidebar-chip'>{tech}</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='sidebar-title'>Agent Pipeline</div>", unsafe_allow_html=True)
@@ -400,6 +407,7 @@ if generate:
                 "flight_results": "",
                 "hotel_results": "",
                 "itinerary": "",
+                "weather_results":"",
                 "llm_calls": 0,
             },
             config=config,
@@ -418,6 +426,12 @@ if generate:
                         text = state_update.get("hotel_results", "")
                         collected["hotel_results"] = text
                         st.markdown(text or "_No hotel data returned._")
+
+                    elif node_name == "weather_agent":
+                        text = state_update.get("weather_results", "")
+                        collected["weather_results"] = text
+
+                        st.markdown(text or "_No weather data returned._")
 
                     elif node_name == "itinerary_agent":
                         text = state_update.get("itinerary", "")
